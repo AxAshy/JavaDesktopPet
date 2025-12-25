@@ -120,10 +120,10 @@ public abstract class Environment {
      */
     public void init() {
         // 启动线程，并将线程设为守护线程
-        if (!this.thread.isAlive()) {
-            this.thread.setDaemon(true);
-            this.thread.setPriority(Thread.MIN_PRIORITY);
-            this.thread.start();
+        if (!thread.isAlive()) {
+            thread.setDaemon(true);
+            thread.setPriority(Thread.MIN_PRIORITY);
+            thread.start();
         }
 
         this.tick();

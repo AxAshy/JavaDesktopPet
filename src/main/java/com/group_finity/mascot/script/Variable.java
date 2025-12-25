@@ -6,7 +6,7 @@ import com.group_finity.mascot.exception.VariableException;
  * 用于获取在 JavaScript资源 中读取的参数
  */
 public abstract class Variable {
-    public static Variable pasrse(final String source) throws VariableException {
+    public static Variable parse(final String source) throws VariableException {
         Variable result = null;
 
         if (source != null) {

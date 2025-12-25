@@ -33,7 +33,7 @@ public class ImagePairLoader {
      * @param center 图片中心的坐标
      * @param scaling 比例因子, 图片大小缩放的比例
      * @param filter 生成(缩放)图片的{@code filter}类型
-     * @param opacity
+     * @param opacity 不透明度
      * @throws IOException
      */
     public static void load(final Path path, final Path rightPath, final Point center, final double scaling, final Filter filter, final double opacity) throws IOException{

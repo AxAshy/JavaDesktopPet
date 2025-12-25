@@ -1,0 +1,15 @@
+package com.group_finity.mascot.exception;
+
+/**
+ * @author Yuki Yamada
+ * @author Shimeji-ee Group
+ */
+public class AnimationInstantiationException extends Exception {
+    public AnimationInstantiationException(final String message) {
+        super(message);
+    }
+
+    public AnimationInstantiationException(final String message, final Throwable cause) {
+        super(message, cause);
+    }
+}

@@ -11,6 +11,10 @@ import com.sun.jna.Platform;
 public abstract class NativeFactory {
     private static NativeFactory instance;
 
+    static {
+        resetInstance();
+    }
+
     /**
      * 根据当前运行的环境返回对应的子类实例
      * @return the environment-specific subclass
