@@ -1,0 +1,62 @@
+<!-- 打包的配置 -->
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="Shimeji-ee" basedir="." default="zip">
+    <target name="zip"> <!-- 打包的结果文件格式 -->
+        <zip destfile="target/src.zip"> <!-- 打包生产文件的目录 -->
+            <fileset dir=".">
+                <include name="**/*"/>
+                <exclude name="target/**/*"/>
+                <exclude name="target"/>
+                <exclude name="bin/**/*"/>
+                <exclude name="bin"/>
+                <exclude name=".settings/**"/>
+                <exclude name=".settings"/>
+                <exclude name=".classpath"/>
+                <exclude name=".project"/>
+                <exclude name=".idea/**/*"/>
+                <exclude name=".idea"/>
+                <exclude name="*.iml"/>
+                <exclude name="*.log"/>
+            </fileset>
+        </zip>
+
+        <ant target="zip_package">
+            <property name="edition" value="Calm"/>
+        </ant>
+        <ant target="zip_package">
+            <property name="edition" value="Professional"/>
+        </ant>
+        <ant target="zip_package">
+            <property name="edition" value="Mischievous"/>
+        </ant>
+    </target>
+
+    <!-- 会生成3个不同的版本, 分别对应不同的Behavior.xml文件 -->
+    <target name="zip_package">
+        <zip destfile="target/Shimeji-ee_${project.version}_${edition}.zip">
+            <fileset dir="target">
+                <include name="Shimeji-ee.jar"/>
+                <include name="Shimeji-ee.exe"/>
+                <include name="src.zip"/>
+                <include name="lib/*"/>
+            </fileset>
+            <mappedresources>
+                <fileset dir="conf">
+                    <include name="${edition}Behavior.xml"/>
+                </fileset>
+                <globmapper from="*.xml" to="conf/behaviors.xml"/>
+            </mappedresources>
+            <fileset dir=".">
+                <include name="LICENSE.txt"/>
+                <include name="originalreadme.txt"/>
+                <include name="readme.txt"/>
+                <include name="changelog.txt"/>
+                <include name="kilkakon.txt"/>
+                <include name="img/**/*"/>
+                <include name="conf/**/*"/>
+                <exclude name="conf/behaviors.xml"/>
+                <exclude name="conf/*Behavior.xml"/>
+            </fileset>
+        </zip>
+    </target>
+</project>

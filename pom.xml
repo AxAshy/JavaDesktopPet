@@ -4,20 +4,31 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.group_finity.mascot</groupId>
-    <artifactId>shimeji</artifactId>
+    <groupId>com.group_finity</groupId>
+    <artifactId>mascot</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <!-- 项目属性配置 -->
+    <name>Shimeji-ee</name>
 
     <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release> <!-- JDK版本-->
+        <mainClass>com.group_finity.mascot.Main</mainClass>
+    
+        <libPrefix>lib</libPrefix>
+        <libDirectory>${project.build.directory}/${libPrefix}</libDirectory>
+        
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
-            <version>5.10.2</version>
+            <version>5.12.2</version>
             <scope>test</scope>
         </dependency>
 
@@ -34,6 +45,152 @@
             <artifactId>nashorn-core</artifactId>
             <version>15.7</version>
         </dependency>
+
+        <dependency>
+            <!-- AbsoluteLayout用于在组件中实现绝对定位 -->
+            <groupId>org.netbeans.external</groupId>
+            <artifactId>AbsoluteLayout</artifactId>
+            <version>RELEASE280</version>
+        </dependency>
     </dependencies>
+
+    <build>
+        <defaultGoal>clean verify</defaultGoal> <!--maven 生命周期执行到的阶段从clean 到 verfiy-->
+        <finalName>${project.name}</finalName> <!--打包生成文件名和项目名相同-->
+        <!-- 声明资源路径 -->
+        <resources>
+            <resource>
+                <directory>${project.basedir}/src/main/resources</directory>
+                <filtering>false</filtering>
+                <includes>
+                    <include>**/*</include> 
+                </includes>
+            </resource>
+        </resources>
+        <!-- 启用插件 -->
+        <plugins>
+            <!-- Compile -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.0</version>
+                <configuration>
+                    <release>${maven.compiler.release}</release> <!-- 指定java compiler的版本-->
+                </configuration>
+            </plugin>
+
+            <!-- Set main class -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive> <!-- The <archive> element is the root of the archiver configuration-->
+                        <manifest> <!-- The <manifest> element configures main section of META-INF/MANIFEST.MF, 它指定Main-Class和其它信息-->
+                            <addClasspath>true</addClasspath> <!-- Whether to create a Class-Path manifest entry-->
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries> <!-- 为true会增加一些额外的信息:Implementation-Title\Version\Vendor-->
+                            <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries> <!-- 为true会增加一些额外的信息:Specification-Title\Version\Vendor-->
+                            <classpathPrefix>${libPrefix}/</classpathPrefix> <!-- A text that will be prefixed to all your Class-Path entries-->
+                            <mainClass>${mainClass}</mainClass> <!-- The Main-Class manifest entry.-->
+                        </manifest>
+                        <manifestEntries> <!-- A list of key/value pairs to add to the manifest.-->
+                            <!-- This fixes a warning involving restricted native access on JDK 24+ -->
+                            <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+                
+            <plugin>
+                <!-- Copy dependencies to target/lib directory, 这样才能确保打包后程序不依赖JDK运行 -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.8.1</version>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${libDirectory}</outputDirectory> <!-- 默认值是${project.build.directory}/dependency, 修改为${project.build.directory}/lib-->
+                            <overWriteReleases>false</overWriteReleases> <!-- Overwrite release artifacts.-->
+                            <overWriteSnapshots>false</overWriteSnapshots> <!-- Overwrite snapshot artifacts.-->
+                            <overWriteIfNewer>true</overWriteIfNewer> <!-- Overwrite artifacts that don't exist or are older than the source.-->
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <!-- Create an .exe file to run the application -->
+                <groupId>com.akathist.maven.plugins.launch4j</groupId>
+                <artifactId>launch4j-maven-plugin</artifactId>
+                <version>2.6.0</version>
+                <executions>
+                    <execution>
+                        <id>l4j-clui</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>launch4j</goal>
+                        </goals>
+                        <configuration>
+                            <headerType>gui</headerType> <!-- Type of the header used to wrap the application.-->
+                            <outfile>${project.build.directory}/${project.build.finalName}.exe</outfile> <!-- Output executable file.-->
+                            <!-- Optional, by default specifies the jar to wrap. 
+                             To launch a jar without wrapping it enter the runtime path of the jar relative to the executable and set <dontWrapJar> to true.-->
+                            <jar>${project.build.finalName}.jar</jar> 
+                            <dontWrapJar>true</dontWrapJar>
+                            <chdir>.</chdir>
+                            <icon>${project.basedir}/src/main/resources/icon.ico</icon>
+                            <classPath>
+                                <mainClass>${mainClass}</mainClass>
+                            </classPath>
+                            <singleInstance>
+                                <mutexName>${project.name}</mutexName>
+                                <windowTitle/>
+                            </singleInstance>
+                            <jre>
+                                <path>%JAVA_HOME%;%PATH%</path>
+                                <requiresJdk>true</requiresJdk>
+                                <minVersion>${maven.compiler.release}</minVersion>
+                                <maxVersion/>
+                            </jre>
+                            <versionInfo>
+                                <fileDescription>${project.name} Launcher</fileDescription>
+                                <copyright>Copyright (C) Group-Finity. All rights reserved.</copyright>
+                            </versionInfo>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <!-- Generate the ZIP files from the old Ant build.xml script -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <!-- Create ZIP files for the source and the three release variants -->
+                        <id>create-zips</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <!-- Execute the "zip" target in build.xml -->
+                                <ant antfile="${project.basedir}/build.xml">
+                                    <target name="zip"/>
+                                </ant>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
