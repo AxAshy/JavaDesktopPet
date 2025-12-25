@@ -1,20 +1,28 @@
 package com.group_finity.mascot;
 
+import javax.sound.sampled.Clip;
 import javax.swing.*;
 import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
 
+import com.group_finity.mascot.animation.Animation;
 import com.group_finity.mascot.animation.Hotspot;
 import com.group_finity.mascot.behavior.Behavior;
+import com.group_finity.mascot.config.Configuration;
+import com.group_finity.mascot.environment.Area;
 import com.group_finity.mascot.environment.MascotEnvironment;
+import com.group_finity.mascot.exception.BehaviorInstantiationException;
 import com.group_finity.mascot.exception.CantBeAliveException;
 import com.group_finity.mascot.image.MascotImage;
+import com.group_finity.mascot.menu.MenuScroller;
 import com.group_finity.mascot.platform.NativeFactory;
 import com.group_finity.mascot.platform.TranslucentWindow;
 import com.group_finity.mascot.script.VariableMap;
+import com.group_finity.mascot.sound.Sounds;
 
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.geom.Ellipse2D;
 import java.util.List;
 import java.util.ResourceBundle;
 import java.util.ArrayList;
@@ -125,6 +133,7 @@ public class Mascot {
 
     private final List<String> affordances = new ArrayList<>(5);
 
+    /**一个Mascot上可点击的区域的列表 */
     private final List<Hotspot> hotspots = new ArrayList<>(5);
 
     /**
@@ -145,7 +154,7 @@ public class Mascot {
         this.window.setAlwaysOnTop(true);
 
         // 注册鼠标的控制器，用于监控鼠标的按下和放开
-        this.window.asComponent().addMouaddMouseListener(new MouseAdapter() {
+        this.window.asComponent().addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(final MouseEvent e) {
                 Mascot.this.mousePressed(e);
@@ -322,7 +331,7 @@ public class Mascot {
 
         // "Follow Mouse!" 菜单项：跟随鼠标
         final JMenuItem gatherMenu = new JMenuItem(languageBundle.getString("FollowCursor"));
-        gatherMenu.addActionListener(event -> manager.setBehaviorAll(Main.getInstance().getConfiguration(imageSet), Main.BEHAVIOR_GATHER, imageSet));
+        gatherMenu.addActionListener(event -> manager.setBehaviorAll(Main.getInstance().getConfiguration(imageSet), "ChaseMouse", imageSet));
 
         // "Reduce to One!" 菜单项：将Mascot减少到任意的一个
         final JMenuItem oneMenu = new JMenuItem(languageBundle.getString("DismissOthers"));
@@ -355,21 +364,143 @@ public class Mascot {
 
         // 添加 Behaviors 子才当. 现在有点点bug，有些时候菜单会消失不见.
         // JLongMenu submenu = new JLongMenu(languageBundle.getString("SetBehaviour"), 30);
-        JMenu subMenu = new JMenu(languageBundle.getString("SetBehaviour")); 
+        JMenu submenu = new JMenu(languageBundle.getString("SetBehaviour")); 
         JMenu allowedSubmenu = new JMenu(languageBundle.getString("AllowedBehaviours"));
-        subMenu.setAutoscrolls(true);
+        submenu.setAutoscrolls(true);
         JMenuItem item; // 菜单项
         JCheckBoxMenuItem toggleItem; // 选框菜单项
-        final Conf config = Main.getInstance().getConfiguration(this.imageSet);
+        final Configuration config = Main.getInstance().getConfiguration(this.imageSet);
+        // 遍历处理所有的behavior，每个行为作为一个可选项，点击后就执行行为
+        for (String behaviorName : config.getBehaviorNames()) {
+            final String command = behaviorName;
+            try {
+                if (!config.isBehaviorHidden(command)) {
+                    String caption = behaviorName.replaceAll("([a-z])(IE)?([A-Z])", "$1 $2 $3").replaceAll(" {2}", " ");
+                    if (config.isBehaviorEnabled(command, this) && !command.contains("/")) {
+                        item = new JMenuItem(languageBundle.containsKey(behaviorName) ?
+                                languageBundle.getString(behaviorName) :
+                                caption);
+                        item.addActionListener(new ActionListener() {
+                            @Override
+                            public void actionPerformed(final ActionEvent e) {
+                                try {
+                                    setBehavior(config.buildBehavior(command));
+                                } catch (BehaviorInstantiationException | CantBeAliveException ex) {
+                                    log.log(Level.SEVERE, "Failed to set behavior to \"" + command + "\" for mascot \"" + this + "\"", ex);
+                                    Main.showError(languageBundle.getString("CouldNotSetBehaviourErrorMessage"), ex);
+                                }
+                            }
+                        });
+                        submenu.add(item);
+                    }
+                    if (config.isBehaviorToggleable(command) && !command.contains("/")) {
+                        toggleItem = new JCheckBoxMenuItem(caption, config.isBehaviorEnabled(command, this));
+                        toggleItem.addItemListener(e -> Main.getInstance().setMascotBehaviorEnabled(command, this, !config.isBehaviorEnabled(command, this)));
+                        allowedSubmenu.add(toggleItem);
+                    }
+                }
+            } catch (RuntimeException e) {
+                // just skip if something goes wrong
+            }
+        }
+        // Create the MenuScroller after adding all the items to the submenu, so it is positioned correctly when first shown.
+        MenuScroller.setScrollerFor(submenu, 30, 125);
+        MenuScroller.setScrollerFor(allowedSubmenu, 30, 125);
+
+        popup.add(increaseMenu);
+        popup.addSeparator();
+        popup.add(gatherMenu);
+        popup.add(restoreMenu);
+        popup.add(debugMenu);
+        popup.addSeparator();
+        if (submenu.getMenuComponentCount() > 0) {
+            popup.add(submenu);
+        }
+        if (allowedSubmenu.getMenuComponentCount() > 0) {
+            popup.add(allowedSubmenu);
+        }
+        // Only add a second separator if either menu has a component count greater than 0. Just in case!
+        if (submenu.getMenuComponentCount() > 0 || allowedSubmenu.getMenuComponentCount() > 0) {
+            popup.addSeparator();
+        }
+        popup.add(pauseMenu);
+        popup.addSeparator();
+        popup.add(disposeMenu);
+        popup.add(oneMenu);
+        popup.add(onlyOneMenu);
+        popup.add(closeMenu);
+
+        // TODO Get the popup to close when clicking outside of it
+        window.asComponent().requestFocus();
+
+        // Lightweight popups expect the shimeji window to draw them if they fall inside the shimeji window's boundary.
+        // As the shimeji window can't support this, we need to set them to heavyweight.
+        popup.setLightWeightPopupEnabled(false);
+        popup.show(window.asComponent(), x, y);
     }
 
-    void tick() {
-        TO DO
+    public void tick() {
+        synchronized (this) {
+            if (isAnimating()) {
+                if (behavior != null) {
+                    try {
+                        behavior.next();
+                    } catch (final CantBeAliveException e) {
+                        log.log(Level.SEVERE, "Could not get next behavior for mascot \"" + this + "\"", e);
+                        Main.showError(Main.getInstance().getLanguageBundle().getString("CouldNotGetNextBehaviourErrorMessage"), e);
+                        dispose();
+                    }
 
+                    time++;
+                }
+
+                if (debugWindow != null) {
+                    // This sets the title of the actual debug window--not the "Window Title" field--to the mascot's ID
+                    // Unfortunately, doing this makes it possible to select it as the activeIE because it no longer has an empty name, so I have commented it out
+                    // debugWindow.setTitle(toString());
+
+                    debugWindow.setBehaviour(behavior.toString().substring(9, behavior.toString().length() - 1).replaceAll("([a-z])(IE)?([A-Z])", "$1 $2 $3").replaceAll(" {2}", " "));
+                    debugWindow.setShimejiX(anchor.x);
+                    debugWindow.setShimejiY(anchor.y);
+
+                    Area activeWindow = environment.getActiveIE();
+                    debugWindow.setWindowTitle(environment.getActiveIETitle());
+                    debugWindow.setWindowX(activeWindow.getLeft());
+                    debugWindow.setWindowY(activeWindow.getTop());
+                    debugWindow.setWindowWidth(activeWindow.getWidth());
+                    debugWindow.setWindowHeight(activeWindow.getHeight());
+
+                    Area workArea = environment.getWorkArea();
+                    debugWindow.setEnvironmentX(workArea.getLeft());
+                    debugWindow.setEnvironmentY(workArea.getTop());
+                    debugWindow.setEnvironmentWidth(workArea.getWidth());
+                    debugWindow.setEnvironmentHeight(workArea.getHeight());
+                }
+            }
+        }
     }
 
     public void apply() {
-        to do
+        if (!isAnimating()) {
+            return;
+        }
+
+        if (image != null) {
+            window.asComponent().setBounds(getBounds()); // Set the bounds of the window to the mascot's bounds
+            window.updateImage(); // Redraw
+        }
+
+        // play sound if requested
+        if (!Sounds.isMuted() && sound != null && Sounds.contains(sound)) {
+            synchronized (log) {
+                Clip clip = Sounds.getSound(sound);
+                if (!clip.isRunning()) {
+                    clip.stop();
+                    clip.setMicrosecondPosition(0);
+                    clip.start();
+                }
+            }
+        }
     }
 
     public void dispose() {
@@ -408,6 +539,10 @@ public class Mascot {
         return manager;
     }
     
+    public void setManager(final Manager manager) {
+        this.manager = manager;
+    }
+
     public Point getAnchor() {
         return this.anchor;
     }
@@ -505,6 +640,9 @@ public class Mascot {
         return affordances;
     }
 
+    /**
+     * 返回Mascot上可点击的区域的列表
+     */
     public List<Hotspot> getHotspots() {
         return hotspots;
     }
