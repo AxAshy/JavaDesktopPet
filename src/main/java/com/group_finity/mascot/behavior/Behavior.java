@@ -1,6 +1,7 @@
 package com.group_finity.mascot.behavior;
 
-import org.w3c.dom.events.MouseEvent;
+
+import java.awt.event.MouseEvent;
 
 import com.group_finity.mascot.Mascot;
 import com.group_finity.mascot.exception.CantBeAliveException;

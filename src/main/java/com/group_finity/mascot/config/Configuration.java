@@ -3,17 +3,286 @@ package com.group_finity.mascot.config;
 import java.awt.*;
 import java.io.IOException;
 import java.util.*;
+import java.util.List;
 import java.util.logging.Logger;
+
+import com.group_finity.mascot.Main;
+import com.group_finity.mascot.Mascot;
+import com.group_finity.mascot.action.Action;
+import com.group_finity.mascot.behavior.Behavior;
+import com.group_finity.mascot.behavior.UserBehavior;
+import com.group_finity.mascot.exception.ActionInstantiationException;
+import com.group_finity.mascot.exception.BehaviorInstantiationException;
+import com.group_finity.mascot.exception.ConfigurationException;
+import com.group_finity.mascot.exception.VariableException;
+import com.group_finity.mascot.script.VariableMap;
+
 import java.util.logging.Level;
 
 public class Configuration {
     private static final Logger log = Logger.getLogger(Configuration.class.getName());
-
-    private static final ResourceBundle SCHEMA_EN = ResourceBundle.getBundle("schema", Locale.US);
-    private ResourceBundle schema;
+    /**使用的XML框架, 会直接从resource文件加读取schema文件,这里只提供英文的默认文件*/
+    private ResourceBundle schema = ResourceBundle.getBundle("schema");
 
     private final Map<String, String> constants = new LinkedHashMap<>(2);
+    // 这里先不管,后面再来看
     private final Map<String, ActionBuilder> actionBuilders = new LinkedHashMap<>();
     private final Map<String, BehaviorBuilder> behaviorBuilders = new LinkedHashMap<>();
     private final Map<String, String> information = new LinkedHashMap<>(8);
+
+    public void load(final Entry configurationNode, final String imageSet) throws IOException, ConfigurationException {
+        log.log(Level.FINE, "Reading configuration file...");
+        log.log(Level.FINE, "Using " + (schema.getLocale().toLanguageTag().equals("und") ? "default" : schema.getLocale().toLanguageTag()) + " schema");
+
+        // 遍历xml文件中的全局变量
+        for (Entry constant : configurationNode.selectChildren(schema.getString("Constant"))) {
+            constants.put(constant.getAttribute(schema.getString("Name")),
+                    constant.getAttribute(schema.getString("Value")));
+        }
+
+        // 遍历xml文件中的ActionList节点
+        log.log(Level.FINE, "Reading action lists");
+        for (final Entry list : configurationNode.selectChildren(schema.getString("ActionList"))) {
+            log.log(Level.FINE, "Reading an action list...");
+
+            // 遍历ActionList节点中的所有Action
+            for (final Entry node : list.selectChildren(schema.getString("Action"))) {
+                final ActionBuilder action = new ActionBuilder(this, node, imageSet);
+
+                if (actionBuilders.containsKey(action.getName())) {
+                    throw new ConfigurationException(Main.getInstance().getLanguageBundle().getString("DuplicateActionErrorMessage") + ": " + action.getName());
+                }
+
+                actionBuilders.put(action.getName(), action);
+            }
+
+            log.log(Level.FINE, "Finished reading an action list");
+        };
+        log.log(Level.FINE, "Finished reading all action lists");
+
+        // 遍历xml文件中的BehaviourList节点
+        log.log(Level.FINE, "Reading behavior lists");
+        for (final Entry list : configurationNode.selectChildren(schema.getString("BehaviourList"))) {
+            log.log(Level.FINE, "Reading a behavior list...");
+
+            loadBehaviors(list, new ArrayList<>());
+
+            log.log(Level.FINE, "Finished reading a behavior list");
+        }
+        log.log(Level.FINE, "Finished reading all behavior lists");
+
+        // 遍历xml文件中的Information节点
+        log.log(Level.FINE, "Reading information");
+        for (final Entry list : configurationNode.selectChildren(schema.getString("Information"))) {
+            log.log(Level.FINE, "Reading an information group...");
+
+            loadInformation(list);
+
+            log.log(Level.FINE, "Finished reading information group");
+        }
+        log.log(Level.FINE, "Finished reading all information");
+
+        log.log(Level.FINE, "Configuration loaded successfully");
+    }
+
+    private void loadBehaviors(final Entry list, final List<String> conditions) {
+        for (final Entry node : list.getChildren()) {
+            if (node.getName().equals(schema.getString("Condition"))) {
+                final List<String> newConditions = new ArrayList<>(conditions);
+                newConditions.add(node.getAttribute(schema.getString("Condition")));
+
+                loadBehaviors(node, newConditions);
+            } else if (node.getName().equals(schema.getString("Behaviour"))) {
+                final BehaviorBuilder behavior = new BehaviorBuilder(this, node, conditions);
+                behaviorBuilders.put(behavior.getName(), behavior);
+            }
+        }
+    }
+
+    public Action buildAction(final String name, final Map<String, String> params) throws ActionInstantiationException {
+        final ActionBuilder factory = actionBuilders.get(name);
+        if (factory == null) {
+            throw new ActionInstantiationException(Main.getInstance().getLanguageBundle().getString("NoCorrespondingActionFoundErrorMessage") + ": " + name);
+        }
+
+        return factory.buildAction(params);
+    }
+
+    private void loadInformation(final Entry list) {
+        for (final Entry node : list.getChildren()) {
+            if (node.getName().equals(schema.getString("Name")) ||
+                    node.getName().equals(schema.getString("PreviewImage")) ||
+                    node.getName().equals(schema.getString("SplashImage"))) {
+                information.put(node.getName(), node.getText());
+            } else if (node.getName().equals(schema.getString("Artist")) ||
+                    node.getName().equals(schema.getString("Scripter")) ||
+                    node.getName().equals(schema.getString("Commissioner")) ||
+                    node.getName().equals(schema.getString("Support"))) {
+                String nameText = node.getAttribute(schema.getString("Name")) != null ? node.getAttribute(schema.getString("Name")) : null;
+                String linkText = node.getAttribute(schema.getString("URL")) != null ? node.getAttribute(schema.getString("URL")) : null;
+
+                if (nameText != null) {
+                    information.put(node.getName() + schema.getString("Name"), nameText);
+                    if (linkText != null) {
+                        information.put(node.getName() + schema.getString("URL"), linkText);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 合法化Configuration内的ActionBuilder和BehaviorBuilder, 其实就是在他们初始化后做个检验
+     * @throws ConfigurationException
+     */
+    public void validate() throws ConfigurationException {
+        for (final ActionBuilder builder : actionBuilders.values()) {
+            builder.validate();
+        }
+        for (final BehaviorBuilder builder : behaviorBuilders.values()) {
+            builder.validate();
+        }
+    }
+
+    public Behavior buildNextBehavior(final String previousName, final Mascot mascot) throws BehaviorInstantiationException {
+        final VariableMap context = new VariableMap();
+        context.putAll(constants); // put first so they can't override mascot
+        context.put("mascot", mascot);
+
+        final Collection<BehaviorBuilder> candidates = new ArrayList<>();
+        long totalFrequency = 0;
+
+        final BehaviorBuilder previousBehaviorFactory;
+        if (previousName != null) {
+            previousBehaviorFactory = behaviorBuilders.get(previousName);
+        } else {
+            previousBehaviorFactory = null;
+        }
+
+        if (previousName == null || previousBehaviorFactory.isNextAdditive()) {
+            for (final BehaviorBuilder behaviorFactory : behaviorBuilders.values()) {
+                try {
+                    if (behaviorFactory.isEffective(context) && isBehaviorEnabled(behaviorFactory, mascot)) {
+                        candidates.add(behaviorFactory);
+                        totalFrequency += behaviorFactory.getFrequency();
+                    }
+                } catch (final VariableException e) {
+                    log.log(Level.WARNING, "Failed to calculate the frequency of the behavior", e);
+                }
+            }
+        }
+
+        if (previousName != null) {
+            for (final BehaviorBuilder behaviorFactory : previousBehaviorFactory.getNextBehaviorBuilders()) {
+                try {
+                    if (behaviorFactory.isEffective(context) && isBehaviorEnabled(behaviorFactory, mascot)) {
+                        candidates.add(behaviorFactory);
+                        totalFrequency += behaviorFactory.getFrequency();
+                    }
+                } catch (final VariableException e) {
+                    log.log(Level.WARNING, "Failed to calculate the frequency of the behavior", e);
+                }
+            }
+        }
+
+        if (totalFrequency == 0) {
+            if (Boolean.parseBoolean(Main.getInstance().getProperties().getProperty("Multiscreen", "true"))) {
+                mascot.setAnchor(new Point((int) (Math.random() * (mascot.getEnvironment().getScreen().getRight() - mascot.getEnvironment().getScreen().getLeft())) + mascot.getEnvironment().getScreen().getLeft(),
+                        mascot.getEnvironment().getScreen().getTop() - 256));
+            } else {
+                mascot.setAnchor(new Point((int) (Math.random() * (mascot.getEnvironment().getWorkArea().getRight() - mascot.getEnvironment().getWorkArea().getLeft())) + mascot.getEnvironment().getWorkArea().getLeft(),
+                        mascot.getEnvironment().getWorkArea().getTop() - 256));
+            }
+            return buildBehavior(schema.getString(UserBehavior.BEHAVIOURNAME_FALL));
+        }
+
+        double random = Math.random() * totalFrequency;
+
+        for (final BehaviorBuilder behaviorFactory : candidates) {
+            random -= behaviorFactory.getFrequency();
+            if (random < 0) {
+                return behaviorFactory.buildBehavior();
+            }
+        }
+
+        return null;
+    }
+
+    public Behavior buildBehavior(final String name, final Mascot mascot) throws BehaviorInstantiationException {
+        if (behaviorBuilders.containsKey(name)) {
+            if (isBehaviorEnabled(name, mascot)) {
+                return behaviorBuilders.get(name).buildBehavior();
+            } else {
+                if (Boolean.parseBoolean(Main.getInstance().getProperties().getProperty("Multiscreen", "true"))) {
+                    mascot.setAnchor(new Point((int) (Math.random() * (mascot.getEnvironment().getScreen().getRight() - mascot.getEnvironment().getScreen().getLeft())) + mascot.getEnvironment().getScreen().getLeft(),
+                            mascot.getEnvironment().getScreen().getTop() - 256));
+                } else {
+                    mascot.setAnchor(new Point((int) (Math.random() * (mascot.getEnvironment().getWorkArea().getRight() - mascot.getEnvironment().getWorkArea().getLeft())) + mascot.getEnvironment().getWorkArea().getLeft(),
+                            mascot.getEnvironment().getWorkArea().getTop() - 256));
+                }
+                return buildBehavior(schema.getString(UserBehavior.BEHAVIOURNAME_FALL));
+            }
+        } else {
+            throw new BehaviorInstantiationException(Main.getInstance().getLanguageBundle().getString("NoBehaviourFoundErrorMessage") + " (" + name + ")");
+        }
+    }
+
+    public Behavior buildBehavior(final String name) throws BehaviorInstantiationException {
+        if (behaviorBuilders.containsKey(name)) {
+            return behaviorBuilders.get(name).buildBehavior();
+        } else {
+            throw new BehaviorInstantiationException(Main.getInstance().getLanguageBundle().getString("NoBehaviourFoundErrorMessage") + " (" + name + ")");
+        }
+    }
+
+    public boolean isBehaviorEnabled(final BehaviorBuilder builder, final Mascot mascot) {
+        if (builder.isToggleable()) {
+            return Arrays.stream(Main.getInstance().getProperties().getProperty("DisabledBehaviours." + mascot.getImageSet(), "").split("/")).noneMatch(behaviour -> behaviour.equals(builder.getName()));
+        }
+        return true;
+    }
+
+    public boolean isBehaviorEnabled(final String name, final Mascot mascot) {
+        if (behaviorBuilders.containsKey(name)) {
+            return isBehaviorEnabled(behaviorBuilders.get(name), mascot);
+        } else {
+            return false;
+        }
+    }
+
+    public boolean isBehaviorHidden(final String name) {
+        if (behaviorBuilders.containsKey(name)) {
+            return behaviorBuilders.get(name).isHidden();
+        } else {
+            return false;
+        }
+    }
+
+    public boolean isBehaviorToggleable(final String name) {
+        if (behaviorBuilders.containsKey(name)) {
+            return behaviorBuilders.get(name).isToggleable();
+        } else {
+            return false;
+        }
+    }
+    
+    Map<String, ActionBuilder> getActionBuilders() {
+        return actionBuilders;
+    }
+
+    public Set<String> getBehaviorNames() {
+        return behaviorBuilders.keySet();
+    }
+
+    public boolean containsInformationKey(String key) {
+        return information.containsKey(key);
+    }
+
+    public String getInformation(String key) {
+        return information.get(key);
+    }
+
+    public ResourceBundle getSchema() {
+        return schema;
+    }
 }

@@ -7,11 +7,11 @@ import com.group_finity.mascot.exception.ActionInstantiationException;
 import com.group_finity.mascot.exception.ConfigurationException;
 
 /**
- * 用于创建 actions 和 action引用的对象的接口
+ * {@link Action} 和 {@link ActionRef} 需要实现的接口
  */
 public interface IActionBuilder {
     /**
-     * 根据给定的参数创建 action 和 它全部的children actions
+     * 根据给定的参数创建 {@link Action} 对象和它全部的children actions
      *
      * @param params 一个属性的 {@link Map}. This will contain the attributes from all actions in this action's
      * inheritance tree, as well as the non-functional attributes from the behavior corresponding to the root action

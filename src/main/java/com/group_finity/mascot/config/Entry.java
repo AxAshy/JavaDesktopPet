@@ -4,7 +4,7 @@ import org.w3c.dom.*;
 import java.util.*;
 
 /**
- * {@code Entry}本质上是用一个对象存储了XML的一个元素{@code Element}，将其的属性存在 entry 中方便访问。
+ * {@code Entry}本质上是用一个对象存储了XML的一个元素{@code Element}或者节点{@code Node}，将其的属性存在 entry 中方便访问。
  * 其中此 element 的属性以键值对{@code Map<String, String>}的形式存储。
  */
 public class Entry {

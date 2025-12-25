@@ -4,9 +4,16 @@ import java.awt.*;
 import java.nio.file.Path;
 
 import com.group_finity.mascot.Mascot;
+import com.group_finity.mascot.config.AnimationBuilder;
 import com.group_finity.mascot.image.ImagePair;
 import com.group_finity.mascot.image.ImagePairs;
 
+/**
+ * {@code Pose}在 {@link AnimationBuilder} 中被调用, {@code ActionBuilder}用于加载XML文件
+ * 中的每个{@code Action}节点, 而{@code AnimationBuilder}用于加载Action节点的{@code Animation}子节点,
+ * 它有一串有序的 {@link Pose} 组成, 每个{@code Pose}节点包含一对图片、图片坐标、持续时长、音频，
+ * 如：Pose Image="/shime1.png" ImageAnchor="64,128" Velocity="0,0" Duration="250"
+ */
 public class Pose {
     private final Path image; // 图片路径
     private final Path rightImage;
